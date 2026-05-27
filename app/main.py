@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
-from app.config import load_settings
+from app.config import Settings, load_settings
 from app.content.history import get_total_turns
 from app.content.roles import ROLES
 from app.game.engine import GameEngine
@@ -30,6 +30,14 @@ logging.basicConfig(
 
 router = Router()
 engine: GameEngine | None = None
+settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    if settings is None:
+        raise RuntimeError("Settings are not initialized")
+
+    return settings
 
 
 def get_engine() -> GameEngine:
@@ -71,6 +79,13 @@ async def status_command(message: Message) -> None:
 
 @router.message(Command("debug_status"))
 async def debug_status_command(message: Message) -> None:
+    if not get_settings().debug_commands_enabled:
+        await message.answer(
+            "Отладочная команда отключена. "
+            "Для локальной проверки установи DEBUG_COMMANDS_ENABLED=true в .env."
+        )
+        return
+
     game = get_engine().get_game(message.from_user.id)
 
     if game is None:
@@ -186,7 +201,34 @@ async def select_role(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("choice:"))
 async def choose_action(callback: CallbackQuery) -> None:
-    choice_id = callback.data.split(":", maxsplit=1)[1]
+    data = callback.data or ""
+    parts = data.split(":")
+
+    game = get_engine().get_game(callback.from_user.id)
+    if game is None:
+        await callback.answer("Активной игры нет. Напиши /start, чтобы начать.", show_alert=True)
+        return
+
+    if len(parts) == 3:
+        try:
+            callback_turn = int(parts[1])
+        except ValueError:
+            await callback.answer("Некорректная кнопка выбора.", show_alert=True)
+            return
+
+        choice_id = parts[2].strip().upper()
+
+        if game.turn != callback_turn:
+            await callback.answer(
+                "Это кнопка старого хода. Нажми актуальную кнопку в последнем сообщении.",
+                show_alert=True,
+            )
+            return
+    elif len(parts) == 2:
+        choice_id = parts[1].strip().upper()
+    else:
+        await callback.answer("Некорректная кнопка выбора.", show_alert=True)
+        return
 
     try:
         result = await get_engine().apply_choice(
@@ -219,9 +261,8 @@ async def choose_action(callback: CallbackQuery) -> None:
 
     await callback.answer()
 
-
 async def main() -> None:
-    global engine
+    global engine, settings
 
     settings = load_settings()
 

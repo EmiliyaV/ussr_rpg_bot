@@ -10,6 +10,7 @@ class Settings:
     ollama_model: str
     ollama_generate_url: str
     db_path: str
+    debug_commands_enabled: bool
 
 
 def _to_bool(value: str | None, default: bool) -> bool:
@@ -39,4 +40,8 @@ def load_settings() -> Settings:
             "http://localhost:11434/api/generate",
         ).strip(),
         db_path=os.getenv("DB_PATH", "storage/games.db").strip(),
+        debug_commands_enabled=_to_bool(
+            os.getenv("DEBUG_COMMANDS_ENABLED"),
+            default=False,
+        ),
     )

@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import logging
 
 import aiohttp
 
 from app.domain.models import ChoiceDefinition, HistoryTurn, RoleDefinition
+from app.game.outcome_resolver import YearOutcome
 from app.llm.prompts import build_final_prompt, build_year_result_prompt
+from app.llm.response_validator import validate_llm_response
 
 
 logger = logging.getLogger(__name__)
@@ -29,9 +33,11 @@ class OllamaClient:
         history_turn: HistoryTurn,
         role: RoleDefinition,
         choice: ChoiceDefinition,
+        outcome: YearOutcome,
         effect_meanings: list[str],
         state_description: str,
         memory: list[str],
+        major_events: list[str],
     ) -> str:
         if not self._enabled:
             return ""
@@ -40,11 +46,22 @@ class OllamaClient:
             history_turn=history_turn,
             role=role,
             choice=choice,
+            outcome=outcome,
             effect_meanings=effect_meanings,
             state_description=state_description,
             memory=memory,
+            major_events=major_events,
         )
-        return await self._generate(prompt)
+        result = await self._generate(prompt)
+        validation = validate_llm_response(result)
+        if not validation.is_valid:
+            logger.warning(
+                "LLM year result rejected for %s: %s",
+                history_turn.year,
+                validation.reason,
+            )
+            return ""
+        return result
 
     async def generate_final(
         self,
@@ -52,6 +69,7 @@ class OllamaClient:
         role: RoleDefinition,
         state_description: str,
         memory: list[str],
+        major_events: list[str],
         ending_type: str,
     ) -> str:
         if not self._enabled:
@@ -61,9 +79,19 @@ class OllamaClient:
             role=role,
             state_description=state_description,
             memory=memory,
+            major_events=major_events,
             ending_type=ending_type,
         )
-        return await self._generate(prompt)
+        result = await self._generate(prompt)
+        validation = validate_llm_response(result)
+        if not validation.is_valid:
+            logger.warning(
+                "LLM final result rejected for ending '%s': %s",
+                ending_type,
+                validation.reason,
+            )
+            return ""
+        return result
 
     async def _generate(self, prompt: str) -> str:
         payload = {
@@ -71,9 +99,9 @@ class OllamaClient:
             "prompt": prompt,
             "stream": False,
             "options": {
-                "temperature": 0.55,
+                "temperature": 0.62,
                 "num_ctx": 8192,
-                "num_predict": 400,
+                "num_predict": 900,
             },
         }
 

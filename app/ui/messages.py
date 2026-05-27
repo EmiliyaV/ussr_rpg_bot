@@ -67,6 +67,18 @@ def _extract_short_context(context: str, limit: int = 900) -> str:
     return _shorten(cleaned, limit)
 
 
+def _format_real_facts(history_turn: HistoryTurn) -> str:
+    facts = getattr(history_turn, "real_facts", None) or history_turn.immutable_facts
+    return "\n".join(f"— {_normalize_text(fact)}" for fact in facts)
+
+
+def _format_player_limits(history_turn: HistoryTurn) -> str:
+    limits = getattr(history_turn, "player_limits", None) or []
+    if not limits:
+        limits = [fact for fact in history_turn.immutable_facts if fact.startswith("Игрок не может")]
+    return "\n".join(f"— {_normalize_text(fact)}" for fact in limits)
+
+
 def _format_immutable_facts(history_turn: HistoryTurn) -> str:
     return "\n".join(f"— {_normalize_text(fact)}" for fact in history_turn.immutable_facts)
 
@@ -95,7 +107,7 @@ def help_message() -> str:
         "Команды:\n"
         "/start — начать новую игру\n"
         "/status — показать текущее положение без чисел\n"
-        "/debug_status — показать скрытые числа для отладки\n"
+        "/debug_status — показать скрытые числа для отладки, только если DEBUG_COMMANDS_ENABLED=true\n"
         "/help — справка\n\n"
         "Правила:\n"
         "- крупные события СССР нельзя отменить одним выбором;\n"
@@ -117,7 +129,8 @@ def role_selected_message(role: RoleDefinition) -> str:
 def build_turn_message(history_turn: HistoryTurn, state: GameState) -> str:
     role = ROLES[state.role_id]
     short_context = _extract_short_context(history_turn.context)
-    immutable = _format_immutable_facts(history_turn)
+    real_facts = _format_real_facts(history_turn)
+    player_limits = _format_player_limits(history_turn)
     choices = _format_choices(history_turn)
 
     return (
@@ -126,8 +139,10 @@ def build_turn_message(history_turn: HistoryTurn, state: GameState) -> str:
         f"Роль: {role.name}\n\n"
         f"Краткий контекст:\n"
         f"{short_context}\n\n"
+        f"Реальные факты года:\n"
+        f"{real_facts}\n\n"
         f"Что нельзя изменить:\n"
-        f"{immutable}\n\n"
+        f"{player_limits}\n\n"
         f"Вопрос:\n"
         f"{_normalize_text(history_turn.question)}\n\n"
         f"Варианты:\n"

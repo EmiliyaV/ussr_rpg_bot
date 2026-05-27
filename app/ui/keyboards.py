@@ -24,7 +24,7 @@ def choices_keyboard(history_turn: HistoryTurn) -> InlineKeyboardMarkup:
     choice_buttons = [
         InlineKeyboardButton(
             text=choice.id,
-            callback_data=f"choice:{choice.id}",
+            callback_data=f"choice:{history_turn.turn}:{choice.id}",
         )
         for choice in history_turn.choices
     ]
